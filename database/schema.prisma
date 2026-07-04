@@ -1,0 +1,596 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QueuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum QueueStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum JobStatus {
+  QUEUED
+  SCHEDULED
+  CLAIMED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+  RETRYING
+  DEAD_LETTER_PENDING
+  DEAD_LETTERED
+}
+
+enum BatchStatus {
+  CREATED
+  QUEUED
+  RUNNING
+  PARTIALLY_COMPLETED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum FailureCategory {
+  VALIDATION
+  TIMEOUT
+  WORKER_CRASH
+  NETWORK
+  DATABASE
+  CANCELLED
+  UNKNOWN
+}
+
+enum JobPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ExecutionStatus {
+  STARTED
+  SUCCEEDED
+  FAILED
+  RETRIED
+  CANCELLED
+}
+
+enum WorkerStatus {
+  STARTING
+  ONLINE
+  DRAINING
+  STOPPED
+  OFFLINE
+  DEAD
+}
+
+enum RetryStrategy {
+  FIXED_DELAY
+  LINEAR_BACKOFF
+  EXPONENTIAL_BACKOFF
+}
+
+enum ScheduleType {
+  DELAYED
+  SCHEDULED
+  RECURRING
+  CRON
+}
+
+enum SystemEventSeverity {
+  INFO
+  WARN
+  ERROR
+  CRITICAL
+}
+
+enum SystemEventService {
+  API
+  WORKER
+  SCHEDULER
+  RECOVERY
+}
+
+enum AlertStatus {
+  ACTIVE
+  RESOLVED
+}
+
+// Organizations group users, projects, and operational resources.
+model Organization {
+  id        String             @id @default(uuid()) @db.Uuid
+  name      String             @db.VarChar(150)
+  slug      String             @unique @db.VarChar(150)
+  status    OrganizationStatus @default(ACTIVE)
+  deletedAt DateTime?          @db.Timestamptz(6)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  memberships OrganizationMember[]
+  projects    Project[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("organizations")
+}
+
+// Organization members control access and ownership within a tenant.
+model OrganizationMember {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  userId         String         @db.Uuid
+  role           MembershipRole @default(MEMBER)
+  deletedAt      DateTime?      @db.Timestamptz(6)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([role])
+  @@index([deletedAt])
+  @@map("organization_members")
+}
+
+// Users authenticate into the platform and own or operate scheduler resources.
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @db.VarChar(255)
+  name         String?   @db.VarChar(255)
+  isVerified    Boolean   @default(false)
+  loginAttempts Int       @default(0)
+  lockedUntil   DateTime? @db.Timestamptz(6)
+  deletedAt     DateTime? @db.Timestamptz(6)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  organizationMemberships OrganizationMember[]
+  projects                Project[]
+  queues                  Queue[]              @relation("QueueCreatedBy")
+  jobsCreated             Job[]                @relation("JobsCreatedBy")
+  batchesCreated          Batch[]              @relation("BatchesCreatedBy")
+  workerHeartbeats        WorkerHeartbeat[]
+  refreshTokens           RefreshToken[]
+
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  token     String    @unique @db.VarChar(255)
+  expiresAt DateTime  @db.Timestamptz(6)
+  revokedAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@index([revokedAt])
+  @@map("refresh_tokens")
+}
+
+model WorkerApiKey {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @db.VarChar(150)
+  keyHash   String    @db.VarChar(255)
+  isActive  Boolean   @default(true)
+  deletedAt DateTime? @db.Timestamptz(6)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([keyHash])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("worker_api_keys")
+}
+
+// Projects group related queues and jobs under an organization-owned namespace.
+model Project {
+  id             String    @id @default(uuid()) @db.Uuid
+  slug           String    @unique @db.VarChar(150)
+  name           String    @db.VarChar(150)
+  description    String?   @db.Text
+  isActive       Boolean   @default(true)
+  deletedAt      DateTime? @db.Timestamptz(6)
+  organizationId String    @db.Uuid
+  ownerId        String    @db.Uuid
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  owner               User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  queues              Queue[]
+  jobs                Job[]
+  batches             Batch[]
+  scheduleDefinitions ScheduleDefinition[]
+
+  @@index([organizationId])
+  @@index([ownerId])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@map("projects")
+}
+
+// Retry policies define how queues and jobs should be retried.
+model RetryPolicy {
+  id              String        @id @default(uuid()) @db.Uuid
+  name            String        @db.VarChar(150)
+  strategy        RetryStrategy @default(EXPONENTIAL_BACKOFF)
+  maxAttempts     Int           @default(3)
+  delaySeconds    Int           @default(10)
+  backoffFactor   Decimal       @default(2.0) @db.Decimal(6, 2)
+  maxDelaySeconds Int?
+  version         Int           @default(1)
+  parentId        String?       @db.Uuid
+  isEnabled       Boolean       @default(true)
+  deletedAt       DateTime?     @db.Timestamptz(6)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  queues Queue[]
+  jobs   Job[]
+
+  @@index([strategy])
+  @@index([isEnabled])
+  @@index([deletedAt])
+  @@map("retry_policies")
+}
+
+// Queues define execution lanes for jobs within a project.
+model Queue {
+  id              String        @id @default(uuid()) @db.Uuid
+  name            String        @db.VarChar(150)
+  description     String?       @db.Text
+  priority        QueuePriority @default(MEDIUM)
+  status          QueueStatus   @default(ACTIVE)
+  maxConcurrency  Int           @default(5)
+  lastProcessedAt DateTime?     @db.Timestamptz(6)
+  deletedAt       DateTime?     @db.Timestamptz(6)
+  retryPolicyId   String?       @db.Uuid
+  projectId       String        @db.Uuid
+  createdById     String        @db.Uuid
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  project             Project              @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  createdBy           User                 @relation("QueueCreatedBy", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  retryPolicy         RetryPolicy?         @relation(fields: [retryPolicyId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  jobs                Job[]
+  batches             Batch[]
+  scheduleDefinitions ScheduleDefinition[]
+
+  @@unique([projectId, name])
+  @@index([projectId])
+  @@index([createdById])
+  @@index([retryPolicyId])
+  @@index([deletedAt])
+  @@index([status])
+  @@index([priority])
+  @@index([lastProcessedAt])
+  @@map("queues")
+}
+
+// Jobs are the primary unit of work enqueued for worker execution.
+model Job {
+  id                    String      @id @default(uuid()) @db.Uuid
+  queueId               String      @db.Uuid
+  projectId             String      @db.Uuid
+  createdById           String      @db.Uuid
+  retryPolicyId         String?     @db.Uuid
+  batchId               String?     @db.Uuid
+  name                  String      @db.VarChar(150)
+  description           String?     @db.Text
+  payload               Json
+  idempotencyKey        String?     @unique @db.VarChar(255)
+  priority              JobPriority @default(MEDIUM)
+  status                JobStatus   @default(QUEUED)
+  attemptCount          Int         @default(0)
+  maxAttempts           Int         @default(3)
+  availableAt           DateTime?   @db.Timestamptz(6)
+  timeoutSeconds        Int?        @default(300)
+  cancellationRequested Boolean     @default(false)
+  workerId              String?     @db.Uuid
+  claimedAt             DateTime?   @db.Timestamptz(6)
+  leaseExpiresAt        DateTime?   @db.Timestamptz(6)
+  startedAt             DateTime?   @db.Timestamptz(6)
+  completedAt           DateTime?   @db.Timestamptz(6)
+  failedAt              DateTime?   @db.Timestamptz(6)
+  deadLetteredAt        DateTime?   @db.Timestamptz(6)
+  deletedAt             DateTime?   @db.Timestamptz(6)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  queue         Queue          @relation(fields: [queueId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  createdBy     User           @relation("JobsCreatedBy", fields: [createdById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  retryPolicy   RetryPolicy?   @relation(fields: [retryPolicyId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  batch         Batch?         @relation(fields: [batchId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  worker        Worker?        @relation(fields: [workerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  executions    JobExecution[]
+  logs          JobLog[]
+  deadLetter    DeadLetterJob?
+  recoveries    JobRecovery[]
+  correlationId String?        @db.Uuid
+
+  @@index([queueId])
+  @@index([projectId])
+  @@index([createdById])
+  @@index([retryPolicyId])
+  @@index([batchId])
+  @@index([workerId])
+  @@index([status])
+  @@index([priority])
+  @@index([availableAt])
+  @@index([deletedAt])
+  @@index([createdAt])
+  @@index([status, deletedAt, availableAt, priority, createdAt], name: "idx_jobs_claim")
+  @@map("jobs")
+}
+
+// Job executions capture each worker run and its outcome.
+model JobExecution {
+  id              String           @id @default(uuid()) @db.Uuid
+  jobId           String           @db.Uuid
+  workerId        String?          @db.Uuid
+  attemptNumber   Int              @default(1)
+  status          ExecutionStatus  @default(STARTED)
+  startedAt       DateTime         @default(now()) @db.Timestamptz(6)
+  finishedAt      DateTime?        @db.Timestamptz(6)
+  error           String?          @db.Text
+  metrics         Json?
+  retryDelayMs    Int?
+  correlationId   String?          @db.Uuid
+  failureCategory FailureCategory?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  job    Job     @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  worker Worker? @relation(fields: [workerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([jobId])
+  @@index([workerId])
+  @@index([status])
+  @@index([startedAt])
+  @@map("job_executions")
+}
+
+// Workers represent the separate service instances that execute jobs.
+model Worker {
+  id              String       @id @default(uuid()) @db.Uuid
+  name            String       @db.VarChar(150)
+  status          WorkerStatus @default(ONLINE)
+  capacity        Int          @default(5)
+  lastHeartbeatAt DateTime?    @db.Timestamptz(6)
+  drainingAt      DateTime?    @db.Timestamptz(6)
+  deletedAt       DateTime?    @db.Timestamptz(6)
+  offlineReason   String?      @db.Text
+  offlineAt       DateTime?    @db.Timestamptz(6)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  executions JobExecution[]
+  heartbeats WorkerHeartbeat[]
+  jobs       Job[]
+
+  @@index([status])
+  @@index([lastHeartbeatAt])
+  @@index([deletedAt])
+  @@map("workers")
+}
+
+// Worker heartbeats track service liveness and operational health.
+model WorkerHeartbeat {
+  id          String   @id @default(uuid()) @db.Uuid
+  workerId    String   @db.Uuid
+  userId      String?  @db.Uuid
+  heartbeatAt DateTime @default(now()) @db.Timestamptz(6)
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  worker Worker @relation(fields: [workerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([workerId])
+  @@index([heartbeatAt])
+  @@map("worker_heartbeats")
+}
+
+// Job logs retain execution events for auditing and debugging.
+model JobLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  jobId         String   @db.Uuid
+  level         String   @db.VarChar(20)
+  message       String   @db.Text
+  context       Json?
+  correlationId String?  @db.Uuid
+  createdAt     DateTime @default(now()) @db.Timestamptz(6)
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([jobId])
+  @@index([createdAt])
+  @@map("job_logs")
+}
+
+// Schedule definitions represent templates for jobs that should be generated at a specific time or interval.
+model ScheduleDefinition {
+  id             String       @id @default(uuid()) @db.Uuid
+  queueId        String       @db.Uuid
+  projectId      String       @db.Uuid
+  name           String       @db.VarChar(150)
+  jobTemplate    Json
+  scheduleType   ScheduleType @default(CRON)
+  cronExpression String?      @db.VarChar(120)
+  timezone       String?      @default("UTC") @db.VarChar(50)
+  startAt        DateTime?    @db.Timestamptz(6)
+  endAt          DateTime?    @db.Timestamptz(6)
+  nextRunAt      DateTime?    @db.Timestamptz(6)
+  lastRunAt      DateTime?    @db.Timestamptz(6)
+  enabled        Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  queue   Queue   @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([queueId])
+  @@index([projectId])
+  @@index([nextRunAt])
+  @@index([enabled])
+  @@map("schedule_definitions")
+}
+
+// Dead letter jobs preserve permanently failed work for inspection.
+model DeadLetterJob {
+  id              String           @id @default(uuid()) @db.Uuid
+  jobId           String           @unique @db.Uuid
+  queueId         String           @db.Uuid
+  projectId       String           @db.Uuid
+  workerId        String?          @db.Uuid
+  reason          String           @db.Text
+  lastError       String?          @db.Text
+  stackTrace      String?          @db.Text
+  retryCount      Int              @default(0)
+  finalAttemptAt  DateTime?        @db.Timestamptz(6)
+  originalPayload Json
+  failureData     Json?
+  metadata        Json?
+  correlationId   String?          @db.Uuid
+  failureCategory FailureCategory?
+  recoveredAt     DateTime?        @db.Timestamptz(6)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([queueId])
+  @@index([projectId])
+  @@index([workerId])
+  @@index([recoveredAt])
+  @@index([createdAt])
+  @@map("dead_letter_jobs")
+}
+
+// System events record cluster-wide operational events.
+model SystemEvent {
+  id            String              @id @default(uuid()) @db.Uuid
+  eventType     String              @db.VarChar(150)
+  message       String?             @db.Text
+  severity      SystemEventSeverity @default(INFO)
+  service       SystemEventService  @default(WORKER)
+  workerId      String?             @db.Uuid
+  jobId         String?             @db.Uuid
+  queueId       String?             @db.Uuid
+  correlationId String?             @db.Uuid
+  metadata      Json?
+  timestamp     DateTime            @default(now()) @db.Timestamptz(6)
+
+  @@index([eventType])
+  @@index([severity])
+  @@index([service])
+  @@index([workerId])
+  @@index([jobId])
+  @@index([timestamp])
+  @@map("system_events")
+}
+
+// Job recoveries track when a DLQ job is retried and whether it succeeded.
+model JobRecovery {
+  id          String   @id @default(uuid()) @db.Uuid
+  jobId       String   @db.Uuid
+  recoveredBy String?  @db.Uuid
+  recoveredAt DateTime @default(now()) @db.Timestamptz(6)
+  status      String   @default("PENDING") // PENDING, SUCCESS, FAILED
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([recoveredBy])
+  @@index([recoveredAt])
+  @@index([status])
+  @@map("job_recoveries")
+}
+
+// Batches group multiple jobs together.
+model Batch {
+  id            String      @id @default(uuid()) @db.Uuid
+  name          String      @db.VarChar(150)
+  projectId     String      @db.Uuid
+  queueId       String      @db.Uuid
+  createdById   String      @db.Uuid
+  status        BatchStatus @default(CREATED)
+  totalJobs     Int         @default(0)
+  completedJobs Int         @default(0)
+  failedJobs    Int         @default(0)
+  runningJobs   Int         @default(0)
+  cancelledJobs Int         @default(0)
+  progress      Float       @default(0.0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  queue     Queue   @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("BatchesCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  jobs      Job[]
+
+  @@index([projectId])
+  @@index([queueId])
+  @@index([createdById])
+  @@index([status])
+  @@map("batches")
+}
+
+// Alerts for operational monitoring
+model Alert {
+  id          String              @id @default(uuid()) @db.Uuid
+  title       String              @db.VarChar(255)
+  description String              @db.Text
+  severity    SystemEventSeverity @default(WARN)
+  status      AlertStatus         @default(ACTIVE)
+  metadata    Json?
+  resolvedAt  DateTime?           @db.Timestamptz(6)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@index([status])
+  @@index([severity])
+  @@index([createdAt])
+  @@map("alerts")
+}

@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+coverage
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+.DS_Store
+backend/dist
+frontend/dist
+worker/dist
+job_scheduler_submission.zip
+job_scheduler_submission/
