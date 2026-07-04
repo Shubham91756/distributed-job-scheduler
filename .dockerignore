@@ -2,9 +2,9 @@ node_modules
 dist
 build
 .git
-.env
-.env.*
-!.env.example
+**/.env
+**/.env.*
+!**/.env.example
 *.log
 coverage
 .vscode

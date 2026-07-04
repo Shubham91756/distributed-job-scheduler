@@ -1,6 +1,7 @@
 import { prisma } from "../config/prisma";
 import { SystemEventServiceLogger } from "./systemEvent.service";
 import { SystemEventSeverity } from "@prisma/client";
+import { logger } from "../config/logger";
 
 export class AlertsService {
 	static async evaluateHealth() {
@@ -50,7 +51,7 @@ export class AlertsService {
 			}
 
 		} catch (error) {
-			console.error("Alert evaluation failed", error);
+			logger.error("Alert evaluation failed", { error });
 		}
 	}
 

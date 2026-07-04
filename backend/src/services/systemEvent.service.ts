@@ -1,5 +1,6 @@
 import { prisma } from "../config/prisma";
 import { SystemEventSeverity, SystemEventService } from "@prisma/client";
+import { logger } from "../config/logger";
 
 interface CreateSystemEventOptions {
 	eventType: string;
@@ -30,7 +31,7 @@ export class SystemEventServiceLogger {
 				}
 			});
 		} catch (error) {
-			console.error("Failed to log system event", error);
+			logger.error("Failed to log system event", { error });
 		}
 	}
 }

@@ -12,13 +12,16 @@
 		"dev:backend": "npm --workspace backend run dev",
 		"dev:frontend": "npm --workspace frontend run dev",
 		"dev:worker": "npm --workspace worker run dev",
+		"dev:scheduler": "npm --workspace scheduler run dev",
 		"build:backend": "npm --workspace backend run build",
 		"build:frontend": "npm --workspace frontend run build",
 		"build:worker": "npm --workspace worker run build",
+		"build:scheduler": "npm --workspace scheduler run build",
 		"typecheck:backend": "npm --workspace backend run typecheck",
 		"typecheck:frontend": "npm --workspace frontend run typecheck",
 		"typecheck:worker": "npm --workspace worker run typecheck",
-		"build": "npm run build:backend && npm run build:frontend && npm run build:worker",
-		"typecheck": "npm run typecheck:backend && npm run typecheck:frontend && npm run typecheck:worker"
+		"typecheck:scheduler": "npm --workspace scheduler run typecheck",
+		"build": "npm run build:backend && npm run build:frontend && npm run build:worker && npm run build:scheduler",
+		"typecheck": "npm run typecheck:backend && npm run typecheck:frontend && npm run typecheck:worker && npm run typecheck:scheduler"
 	}
 }

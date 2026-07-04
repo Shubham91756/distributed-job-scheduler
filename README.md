@@ -50,15 +50,15 @@ npx prisma generate
 ```
 
 ## Environment Variables
-Create a `.env` file in the root directory:
-```env
-DATABASE_URL="postgresql://postgres:password@localhost:5432/job_scheduler?schema=public"
-JWT_SECRET="super-secret-development-key"
-REFRESH_TOKEN_SECRET="super-secret-refresh-key"
-NODE_ENV="development"
-PORT=3000
-WORKER_CONCURRENCY=5
-```
+The repository contains `.env.example` files in the `backend`, `frontend`, `worker`, and `scheduler` directories.
+DO NOT COMMIT SECRETS. You must create `.env` files locally or provide them via your cloud provider.
+
+Required Production Variables:
+- `DATABASE_URL` (PostgreSQL connection string)
+- `JWT_SECRET` (For signing auth tokens)
+- `FRONTEND_URL` (For CORS in the backend)
+- `NODE_ENV=production`
+- `VITE_API_URL` (For the frontend to connect to the backend)
 
 ## Running Backend
 ```bash
@@ -80,29 +80,37 @@ npm run dev:worker
 npm run dev:scheduler
 ```
 
-## Docker Setup
-To boot the entire stack in production mode:
+## Deployment
+
+The platform is fully configured for a production-grade cloud deployment.
+
+### Deploying Frontend to Vercel
+1. Connect your GitHub repository to Vercel.
+2. Select the `frontend` directory as the Root Directory.
+3. Vercel will automatically detect Vite and use `vercel.json`.
+4. Add the `VITE_API_URL` environment variable pointing to your Railway backend.
+
+### Deploying Backend, Worker, and Scheduler to Railway
+1. Create a new Railway Project and provision a PostgreSQL database.
+2. Connect your GitHub repository to Railway.
+3. Create 3 separate services from the repository:
+   - **Backend**: Set Root Directory to `/`, Railway will use `/backend/railway.json`.
+   - **Worker**: Set Root Directory to `/`, Railway will use `/worker/railway.json`.
+   - **Scheduler**: Set Root Directory to `/`, Railway will use `/scheduler/railway.json`.
+4. Inject the `DATABASE_URL`, `JWT_SECRET`, and `FRONTEND_URL` environment variables to all 3 services.
+5. Railway will automatically build and deploy them independently using `NIXPACKS` and monitor health via the `/api/health/live` endpoints.
+
+### Docker Deployment
+To boot the entire stack in production mode locally or on a VPS:
 ```bash
 docker-compose -f docker-compose.prod.yml up --build -d
 ```
 
-## API Documentation
-The API adheres to RESTful principles. Authentication is enforced via JWT Bearer tokens. 
-*See [04_API_Documentation.md](docs/04_API_Documentation.md) for detailed endpoint schemas.*
+### Troubleshooting
+- **CORS Errors:** Ensure `FRONTEND_URL` in the backend exactly matches the Vercel deployed URL (without trailing slashes).
+- **Database Migrations:** Railway will execute migrations automatically during the build phase if configured, otherwise run `npx prisma migrate deploy` locally pointing to the Railway database.
+- **Winston Logging:** Logs are emitted as JSON in production for easier querying in Railway's log explorer.
 
-## Testing
-The repository contains automated unit and integration tests.
-```bash
-npm run build
-npm --workspace backend run test
-npm --workspace worker run test
-```
-
-## Screenshots
-*See the `docs/screenshots/` directory for dashboard previews.*
-
-## Deployment
-The platform is designed to be deployed as stateless Docker containers. 
 *See [06_Deployment_Guide.md](docs/06_Deployment_Guide.md) for comprehensive instructions.*
 
 ## Future Improvements

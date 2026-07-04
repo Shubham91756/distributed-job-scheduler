@@ -1,19 +1,42 @@
+import winston from "winston";
+
+const logFormat = winston.format.combine(
+	winston.format.timestamp(),
+	winston.format.json()
+);
+
+const winstonLogger = winston.createLogger({
+	level: process.env.LOG_LEVEL || "info",
+	format: logFormat,
+	defaultMeta: { service: "scheduler" },
+	transports: [
+		new winston.transports.Console({
+			format: winston.format.combine(
+				winston.format.colorize(),
+				winston.format.printf(({ timestamp, level, message, service, ...meta }) => {
+					return `[${timestamp}] ${level} [${service}]: ${message} ${Object.keys(meta).length ? JSON.stringify(meta) : ""}`;
+				})
+			)
+		})
+	]
+});
+
 export class SchedulerLogger {
 	info(message: string, meta?: any) {
-		console.log(`[${new Date().toISOString()}] [INFO] ${message}`, meta || "");
+		winstonLogger.info(message, meta);
 	}
 
 	error(message: string, error?: any) {
-		console.error(`[${new Date().toISOString()}] [ERROR] ${message}`, error || "");
+		winstonLogger.error(message, { error });
 	}
 
 	warn(message: string, meta?: any) {
-		console.warn(`[${new Date().toISOString()}] [WARN] ${message}`, meta || "");
+		winstonLogger.warn(message, meta);
 	}
 
 	debug(message: string, meta?: any) {
 		if (process.env.DEBUG === "true") {
-			console.log(`[${new Date().toISOString()}] [DEBUG] ${message}`, meta || "");
+			winstonLogger.debug(message, meta);
 		}
 	}
 }
