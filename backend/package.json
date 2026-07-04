@@ -8,6 +8,7 @@
 		"build": "tsc -p tsconfig.json",
 		"start": "node dist/server.js",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
+		"test": "vitest run",
 		"prisma:generate": "prisma generate",
 		"prisma:migrate": "prisma migrate dev",
 		"prisma:studio": "prisma studio"
