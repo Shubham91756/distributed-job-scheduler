@@ -2,6 +2,9 @@
 	"name": "distributed-job-scheduler",
 	"version": "1.0.0",
 	"private": true,
+	"engines": {
+		"node": ">=20.19.0"
+	},
 	"workspaces": [
 		"backend",
 		"frontend",
