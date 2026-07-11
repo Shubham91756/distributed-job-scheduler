@@ -32,7 +32,7 @@ export class JobGenerator {
 	private async generateJobs() {
 		// Atomic select-for-update to prevent multiple schedulers from processing the same schedules
 		const dueSchedules = await prisma.$queryRaw<any[]>`
-			SELECT * FROM "ScheduleDefinition"
+			SELECT * FROM "schedule_definitions"
 			WHERE enabled = true 
 			  AND next_run_at <= NOW()
 			  AND deleted_at IS NULL
