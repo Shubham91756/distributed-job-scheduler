@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && cp server.js dist/server.js",
     "preview": "vite preview",
-    "start": "node server.js",
+    "start": "node dist/server.js",
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {

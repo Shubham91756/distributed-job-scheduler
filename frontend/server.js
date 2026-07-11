@@ -3,7 +3,8 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-const DIST = path.join(__dirname, "dist");
+// server.js lives inside dist/, so serve from the same directory
+const DIST = __dirname;
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -22,24 +23,13 @@ const MIME_TYPES = {
   ".eot": "application/vnd.ms-fontobject",
   ".map": "application/json",
   ".webp": "image/webp",
-  ".webm": "video/webm",
-  ".mp4": "video/mp4",
   ".txt": "text/plain; charset=utf-8",
-  ".xml": "application/xml",
-  ".pdf": "application/pdf",
 };
 
-function getContentType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  return MIME_TYPES[ext] || "application/octet-stream";
-}
-
 const server = http.createServer((req, res) => {
-  // Strip query string
   const urlPath = req.url.split("?")[0];
   let filePath = path.join(DIST, urlPath === "/" ? "index.html" : urlPath);
 
-  // Security: prevent path traversal
   if (!filePath.startsWith(DIST)) {
     res.writeHead(403);
     res.end("Forbidden");
@@ -48,11 +38,10 @@ const server = http.createServer((req, res) => {
 
   fs.stat(filePath, (err, stats) => {
     if (!err && stats.isFile()) {
-      // Serve the file directly
-      res.writeHead(200, { "Content-Type": getContentType(filePath) });
+      const ext = path.extname(filePath).toLowerCase();
+      res.writeHead(200, { "Content-Type": MIME_TYPES[ext] || "application/octet-stream" });
       fs.createReadStream(filePath).pipe(res);
     } else {
-      // SPA fallback: serve index.html for all unknown routes
       const indexPath = path.join(DIST, "index.html");
       fs.stat(indexPath, (err2) => {
         if (err2) {
