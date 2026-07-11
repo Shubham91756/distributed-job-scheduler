@@ -34,9 +34,8 @@ export class JobGenerator {
 		const dueSchedules = await prisma.$queryRaw<any[]>`
 			SELECT * FROM "schedule_definitions"
 			WHERE enabled = true 
-			  AND next_run_at <= NOW()
-			  AND deleted_at IS NULL
-			ORDER BY next_run_at ASC
+			  AND "nextRunAt" <= NOW()
+			ORDER BY "nextRunAt" ASC
 			LIMIT 50
 			FOR UPDATE SKIP LOCKED
 		`;
