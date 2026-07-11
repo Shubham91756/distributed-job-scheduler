@@ -3,8 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const PORT = process.env.PORT || 3000;
-// server.js lives inside dist/, so serve from the same directory
-const DIST = __dirname;
+const DIST = path.join(__dirname, "dist");
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
